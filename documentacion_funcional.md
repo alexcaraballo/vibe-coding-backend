@@ -144,13 +144,84 @@ Facilitar el compartir vehículo entre usuarios que realizan trayectos similares
 
 ---
 
-#### RF-006: Matching Básico entre Usuarios
-**Descripción:** Simular matching básico entre conductores y pasajeros.
+#### RF-006: Matching Básico entre Usuarios (Motor de Asociación de Trayectos)
+**Descripción:** Sistema de matching automático que identifica coincidencias entre trayectos publicados y peticiones de viaje, considerando restricciones geográficas, temporales y de desvío máximo acumulativo.
 
-**⚠️ Información Insuficiente en docs/:**
-- Algoritmo de matching específico
-- Criterios de compatibilidad
-- Proceso de notificación de matches
+**Objetivo:**
+Identificar entre los trayectos publicados aquellos que pueden admitir una nueva petición de viaje sin violar las restricciones del conductor ni las condiciones del pasajero.
+
+**Entrada:**
+- **Petición de viaje (Pasajero):**
+  - Origen y destino (coordenadas geográficas: latitud, longitud)
+  - Día del viaje (fecha exacta)
+  - Filtros opcionales: "A partir de esta hora" / "Antes de esta hora"
+
+- **Trayecto publicado (Conductor):**
+  - Origen y destino (coordenadas geográficas)
+  - Hora de salida y hora prevista de llegada
+  - Desvío máximo permitido (en minutos o porcentaje de duración original)
+  - Roadmap actual: lista ordenada de tramos (ej: Cádiz → Jerez → Dos Hermanas → Sevilla)
+  - Desvío acumulado actual: minutos adicionales ya consumidos
+
+**Salida:**
+- Lista de trayectos sugeridos con:
+  - Identificador del trayecto
+  - Descripción de la ruta actual
+  - Estimación del desvío adicional
+  - Estado de compatibilidad (apto/no apto)
+  - Nivel de coincidencia o puntuación (ranking)
+
+**Reglas de Asociación:**
+
+1. **Coincidencia Geográfica:**
+   - Origen de la petición próximo a algún punto del trayecto
+   - Destino de la petición en un punto posterior dentro del orden lógico del trayecto
+
+2. **Coincidencia Temporal:**
+   - El día debe coincidir exactamente
+   - Si hay rango horario, la hora de paso prevista debe respetarlo
+
+3. **Desvío Máximo Acumulativo (Crítico):**
+   - Cada trayecto tiene un límite máximo de desvío (ej: 30 minutos)
+   - Cada nueva inserción consume parte de ese margen
+   - Restricción: `desvío acumulado actual + desvío adicional proyectado ≤ desvío máximo permitido`
+   - Si no se cumple, el trayecto no es elegible
+
+4. **Compatibilidad Lógica:**
+   - No se permiten inserciones que alteren el orden cronológico del roadmap
+   - No se consideran trayectos cuyo punto de salida ya haya sido superado
+
+**Criterios de Priorización/Ranking:**
+1. Menor desvío adicional provocado
+2. Mayor proximidad entre puntos de origen/destino
+3. Ajuste horario más cercano al solicitado
+
+**Funcionalidades Principales:**
+- Recepción y validación de peticiones de viaje
+- Evaluación de trayectos publicados (filtrado por fecha)
+- Cálculo de posibles inserciones en el roadmap
+- Verificación del desvío máximo acumulativo
+- Generación de resultados ordenados por adecuación
+
+**Casos de Uso Ejemplares:**
+
+*Caso 1: Inserción válida*
+- Trayecto: Cádiz → Sevilla (9:00–10:00), desvío máximo 30 min
+- Petición: Jerez → Dos Hermanas
+- Desvío adicional estimado: +20 min
+- **Resultado: ACEPTADO** (Desvío acumulado = 20 min)
+
+*Caso 2: Inserción excede desvío máximo*
+- Mismo trayecto con desvío acumulado de 20 min
+- Nueva petición: Puerto Real → Sevilla (+15 min)
+- **Resultado: RECHAZADO** (Desvío total proyectado = 35 min > 30 min)
+
+**Restricciones Funcionales:**
+- El cálculo del desvío debe ser dinámico y acumulativo
+- El sistema debe evaluar varios trayectos activos simultáneamente
+- Los trayectos se actualizan automáticamente tras aceptar una petición
+
+**Documentación Técnica:** Ver `docs/match_engine.md` para detalles de implementación
 
 ---
 
@@ -345,9 +416,14 @@ GET    /users/{id}/bookings → Listar reservas de usuario
 - Gestión de perfiles
 - Rol conductor/pasajero
 
-**4. Módulo de Matching**
-- Algoritmo de coincidencia básica
-- Filtrado por origen/destino
+**4. Módulo de Matching (Motor de Asociación de Trayectos)**
+- Evaluación de coincidencias geográficas y temporales
+- Cálculo de desvío acumulativo y adicional
+- Verificación de restricciones de desvío máximo
+- Gestión de roadmap dinámico
+- Priorización y ranking de sugerencias
+- Algoritmo de inserción óptima en roadmap
+- Servicios de geocodificación (coordenadas ↔ direcciones)
 
 **5. Módulo de Mapas (Maps)**
 - Visualización de rutas
@@ -522,21 +598,58 @@ Un usuario puede:
 
 ---
 
-#### Flujo 5: Matching Básico
+#### Flujo 5: Matching Avanzado con Motor de Asociación
 
-**Actor:** Sistema
+**Actor:** Sistema (Motor de Matching), Pasajero, Conductor
+
+**Gatillador:** Pasajero realiza una petición de viaje (TravelRequest)
 
 **Secuencia:**
-1. Sistema detecta nueva publicación de trayecto
-2. Sistema busca pasajeros con rutas compatibles
-3. Sistema ejecuta algoritmo de matching
-4. Sistema identifica coincidencias
+1. Pasajero ingresa solicitud de viaje:
+   - Origen (dirección o coordenadas)
+   - Destino (dirección o coordenadas)
+   - Fecha del viaje
+   - Opcionalmente: rango horario (desde/hasta)
+2. Sistema crea registro de TravelRequest
+3. Sistema valida y geocodifica ubicaciones (si son direcciones, las convierte a lat/lng)
+4. Motor de Matching inicia evaluación:
+   - Filtra trayectos por fecha exacta
+   - Descarta trayectos con salida pasada
+5. Para cada trayecto compatible temporalmente:
+   - Evalúa coincidencia geográfica (origen cerca de algún punto del roadmap)
+   - Verifica que destino esté en un punto posterior lógico
+   - Calcula posibles puntos de inserción en el roadmap
+   - Estima desvío adicional que provocaría la inserción
+   - Obtiene desvío acumulado actual del trayecto
+   - Verifica restricción: `current_detour + additional_detour ≤ max_detour`
+   - Si cumple todas las condiciones, marca trayecto como compatible
+6. Sistema calcula puntuación de adecuación para cada match válido
+7. Sistema ordena resultados por mejor ajuste (menor desvío, mayor proximidad, mejor hora)
+8. Sistema presenta al pasajero lista de trayectos sugeridos con:
+   - Información del conductor
+   - Ruta actual y ruta proyectada tras inserción
+   - Desvío adicional estimado
+   - Puntuación de compatibilidad
+9. Pasajero puede:
+   - Solicitar unirse a un trayecto sugerido
+   - Refinar criterios de búsqueda
+   - Cancelar la petición
 
-**⚠️ No especificado:**
-- Criterios de compatibilidad
-- Acción posterior al match (notificación, sugerencia)
-- Frecuencia de ejecución
-- Nivel de automatización
+**Flujo alternativo: Aceptación de petición por conductor**
+- Si pasajero solicita unirse a un trayecto:
+  - Sistema notifica al conductor
+  - Conductor puede aceptar o rechazar
+  - Si acepta:
+    - Sistema crea Booking
+    - Sistema actualiza roadmap del Trip
+    - Sistema actualiza current_detour_minutes
+    - Sistema decrementa available_seats
+    - Sistema actualiza estado de TravelRequest a 'accepted'
+
+**⚠️ No especificado en docs/:**
+- Proceso exacto de notificación al conductor
+- Tiempo de espera para respuesta del conductor
+- Qué sucede si el conductor no responde
 
 ---
 
@@ -880,50 +993,124 @@ El usuario desea visualizar la ruta del trayecto en un mapa.
 
 ---
 
-### Caso de Uso 6: Matching Básico entre Usuarios
+### Caso de Uso 6: Matching Avanzado de Trayectos y Peticiones
 
 **Identificador:** CU-006
 
-**Nombre:** Simular Matching de Usuarios
+**Nombre:** Motor de Asociación de Trayectos y Peticiones
 
 **Actores:**
-- **Principal:** Sistema (proceso automatizado)
-- **Secundario:** Conductor, Pasajero (receptores de notificaciones)
+- **Principal:** Sistema (proceso automatizado del Motor de Matching)
+- **Secundario:** Pasajero (solicita viaje), Conductor (publica trayectos)
 
 **Precondiciones:**
-- Deben existir trayectos publicados en el sistema
-- Deben existir usuarios buscando trayectos
+- Deben existir trayectos activos publicados con roadmap definido
+- Debe recibirse una petición de viaje válida con origen, destino y fecha
+- Los trayectos deben tener configurado su desvío máximo permitido
 
 **Gatillador:**
-Sistema detecta nuevos trayectos o nuevas búsquedas que requieren matching.
+Pasajero realiza una petición de viaje especificando origen, destino, fecha y opcionalmente rango horario.
 
 **Secuencia Normal:**
-1. Sistema inicia proceso de matching
-2. Sistema obtiene trayectos disponibles
-3. Sistema obtiene perfiles/preferencias de pasajeros
-4. Sistema aplica algoritmo de matching básico
-5. Sistema identifica coincidencias entre trayectos y pasajeros
-6. Sistema genera lista de sugerencias
-7. Sistema notifica a usuarios sobre matches
+1. Sistema recibe petición de viaje del pasajero
+2. Sistema valida que la fecha sea válida y el rango horario sea coherente
+3. Sistema transforma direcciones/coordenadas a formato interno estándar
+4. Sistema filtra trayectos publicados por coincidencia de fecha exacta
+5. Para cada trayecto compatible temporalmente:
+   - 5.1. Sistema evalúa coincidencia geográfica (origen próximo a algún punto del trayecto)
+   - 5.2. Sistema verifica que el destino esté en un punto posterior del roadmap
+   - 5.3. Sistema calcula posibles puntos de inserción en el roadmap actual
+   - 5.4. Sistema estima el desvío adicional que provocaría la inserción
+   - 5.5. Sistema obtiene el desvío acumulado actual del trayecto
+   - 5.6. Sistema verifica: `desvío_acumulado_actual + desvío_adicional ≤ desvío_máximo_permitido`
+   - 5.7. Si la verificación es exitosa, el trayecto se marca como compatible
+6. Sistema calcula puntuación de adecuación para cada trayecto compatible basándose en:
+   - Menor desvío adicional
+   - Mayor proximidad origen/destino
+   - Mejor ajuste horario
+7. Sistema ordena resultados por puntuación (mejor ajuste primero)
+8. Sistema devuelve lista de trayectos sugeridos con:
+   - ID del trayecto
+   - Ruta actual y ruta proyectada tras inserción
+   - Desvío adicional estimado
+   - Puntuación de compatibilidad
+9. Sistema presenta sugerencias al pasajero
 
 **Secuencias Alternativas:**
 
-**5a. No se encuentran coincidencias**
-- 5a.1. Algoritmo no identifica matches válidos
-- 5a.2. Sistema registra intento sin resultados
-- 5a.3. Caso de uso termina sin acción
+**3a. Error en geocodificación**
+- 3a.1. Sistema no puede convertir ubicación a coordenadas válidas
+- 3a.2. Sistema muestra mensaje de error "No se pudo procesar la ubicación"
+- 3a.3. Caso de uso termina sin éxito
+
+**4a. No hay trayectos en la fecha solicitada**
+- 4a.1. Sistema no encuentra trayectos publicados para ese día
+- 4a.2. Sistema muestra mensaje "No hay trayectos disponibles para la fecha seleccionada"
+- 4a.3. Sistema sugiere buscar en fechas cercanas
+- 4a.4. Caso de uso termina exitosamente sin resultados
+
+**5.6a. Desvío máximo excedido**
+- 5.6a.1. Sistema detecta que `desvío_acumulado + desvío_adicional > desvío_máximo`
+- 5.6a.2. Trayecto se marca como NO COMPATIBLE
+- 5.6a.3. Se excluye de los resultados finales
+- 5.6a.4. Sistema continúa evaluando siguientes trayectos
+
+**5a. No hay coincidencia geográfica**
+- 5a.1. Origen de petición no está próximo a ningún punto del trayecto
+- 5a.2. Trayecto se descarta
+- 5a.3. Sistema continúa con siguiente trayecto
+
+**7a. Ningún trayecto cumple todas las restricciones**
+- 7a.1. Todos los trayectos evaluados fueron descartados
+- 7a.2. Sistema muestra mensaje "No se encontraron trayectos compatibles"
+- 7a.3. Sistema sugiere modificar criterios de búsqueda
+- 7a.4. Caso de uso termina exitosamente sin resultados
 
 **Postcondiciones:**
 - **Éxito:**
-  - Usuarios reciben sugerencias de trayectos compatibles
-  - Se facilita la conexión entre conductores y pasajeros
+  - Pasajero recibe lista priorizada de trayectos compatibles
+  - Cada sugerencia incluye estimación clara del desvío
+  - Sistema mantiene integridad de las restricciones de los conductores
+  - Pasajero puede proceder a solicitar unirse a un trayecto
 - **Fallo:**
-  - No se envían notificaciones
+  - No se muestran sugerencias
+  - No se alteran los trayectos existentes
   - Sistema mantiene estado consistente
 
 **Reglas de Negocio:**
-- Matching puede ser exacto o aproximado por nombre de ciudad
-- ⚠️ No especificadas: criterios de compatibilidad, peso de diferentes factores, frecuencia de ejecución
+1. **Coincidencia de fecha exacta obligatoria** - No se permiten aproximaciones de fecha
+2. **Desvío máximo acumulativo es restrictivo** - Cada conductor define su límite de tolerancia
+3. **Orden cronológico del roadmap inmutable** - No se permiten inserciones que alteren la secuencia lógica
+4. **Trayectos con salida pasada se excluyen** - No se consideran trayectos cuyo punto de salida ya ocurrió
+5. **Cálculo de desvío dinámico** - El desvío se recalcula en base al roadmap actual, no al trayecto original vacío
+6. **Priorización por menor impacto** - Se favorecen las inserciones que menos afecten al trayecto original
+
+**Datos de Ejemplo:**
+
+*Ejemplo 1: Matching exitoso*
+- **Petición:** Jerez → Dos Hermanas, 15 de marzo, entre 9:00-11:00
+- **Trayecto:** Cádiz (9:00) → Sevilla (10:00), desvío máx: 30 min, desvío actual: 0 min
+- **Evaluación:**
+  - Coincidencia fecha: ✓
+  - Jerez está en la ruta: ✓
+  - Dos Hermanas está después en la ruta: ✓
+  - Desvío adicional: +20 min
+  - Verificación: 0 + 20 ≤ 30 ✓
+- **Resultado:** COMPATIBLE, puntuación alta
+
+*Ejemplo 2: Matching rechazado por desvío*
+- **Petición:** Puerto Real → Sevilla, 15 de marzo
+- **Trayecto:** Mismo trayecto anterior, ahora con desvío actual: 20 min (ya aceptó Jerez-Dos Hermanas)
+- **Evaluación:**
+  - Coincidencia fecha: ✓
+  - Ruta geográfica compatible: ✓
+  - Desvío adicional estimado: +15 min
+  - Verificación: 20 + 15 = 35 > 30 ✗
+- **Resultado:** NO COMPATIBLE (excede desvío máximo)
+
+**Referencias:**
+- Documento técnico: `docs/match_engine.md`
+- Requisito funcional asociado: RF-006
 
 ---
 
@@ -1035,6 +1222,19 @@ Las siguientes se identifican en el diagrama handwritten:
 | driver_id | UUID/Integer | FK(User/Driver), NOT NULL | Conductor del trayecto |
 | created_at | DateTime | AUTO | Fecha de creación del trayecto |
 
+**Atributos para Motor de Matching (de match_engine.md):**
+
+| Atributo | Tipo | Restricciones | Descripción |
+|----------|------|---------------|-------------|
+| origin_lat | Decimal | NOT NULL | Latitud del punto de origen |
+| origin_lng | Decimal | NOT NULL | Longitud del punto de origen |
+| destination_lat | Decimal | NOT NULL | Latitud del punto de destino |
+| destination_lng | Decimal | NOT NULL | Longitud del punto de destino |
+| estimated_arrival_time | Time | NOT NULL | Hora prevista de llegada |
+| max_detour_minutes | Integer | NOT NULL, >= 0, DEFAULT 30 | Desvío máximo permitido (en minutos) |
+| current_detour_minutes | Integer | NOT NULL, >= 0, DEFAULT 0 | Desvío acumulado actual (en minutos) |
+| roadmap | JSON/Array | NOT NULL | Lista ordenada de waypoints/tramos actuales |
+
 **Atributos Inferidos:**
 
 | Atributo | Tipo | Restricciones | Descripción |
@@ -1090,6 +1290,40 @@ Las siguientes se identifican en el diagrama handwritten:
 
 ---
 
+#### Entidad: TravelRequest (Petición de Viaje)
+
+**Información de match_engine.md:**
+
+| Atributo | Tipo | Restricciones | Descripción |
+|----------|------|---------------|-------------|
+| id | UUID/Integer | PK, NOT NULL, UNIQUE, AUTO | Identificador de la petición |
+| passenger_id | UUID/Integer | FK(User), NOT NULL | Pasajero que solicita el viaje |
+| origin_lat | Decimal | NOT NULL | Latitud del punto de origen solicitado |
+| origin_lng | Decimal | NOT NULL | Longitud del punto de origen solicitado |
+| destination_lat | Decimal | NOT NULL | Latitud del punto de destino solicitado |
+| destination_lng | Decimal | NOT NULL | Longitud del punto de destino solicitado |
+| travel_date | Date | NOT NULL | Día del viaje solicitado |
+| time_from | Time | NULL | Filtro: hora mínima de salida (opcional) |
+| time_to | Time | NULL | Filtro: hora máxima de salida (opcional) |
+| status | Enum | DEFAULT 'pending' | Estado: pending, matched, accepted, cancelled |
+| created_at | DateTime | AUTO | Fecha de creación de la petición |
+| updated_at | DateTime | AUTO | Última actualización |
+
+**Atributos Adicionales Inferidos:**
+
+| Atributo | Tipo | Restricciones | Descripción |
+|----------|------|---------------|-------------|
+| origin_address | String | NULL | Dirección textual del origen |
+| destination_address | String | NULL | Dirección textual del destino |
+| seats_requested | Integer | DEFAULT 1, >= 1 | Número de plazas solicitadas |
+| passenger_notes | Text | NULL | Notas adicionales del pasajero |
+| matched_trip_id | UUID/Integer | FK(Trip), NULL | Trayecto con el que se hizo match |
+
+**Descripción:**
+Esta entidad representa las solicitudes de viaje realizadas por pasajeros, que son evaluadas por el Motor de Matching para encontrar trayectos compatibles.
+
+---
+
 ### Relaciones entre Entidades
 
 ```
@@ -1099,11 +1333,16 @@ User (1) ──< actúa como >── (0..1) Passenger
 Driver (1) ──< publica >── (0..*) Trip
 Trip (1) ──< tiene >── (0..*) Booking
 Passenger (1) ──< realiza >── (0..*) Booking
+Passenger (1) ──< solicita >── (0..*) TravelRequest
+TravelRequest (0..1) ──< es evaluada contra >── (0..*) Trip
+TravelRequest (0..1) ──< resulta en >── (0..1) Booking
 
 Equivalente a:
 User (1) ──< publica (como conductor) >── (0..*) Trip
 User (1) ──< reserva (como pasajero) >── (0..*) Booking
+User (1) ──< solicita (como pasajero) >── (0..*) TravelRequest
 Trip (1) ──< contiene >── (0..*) Booking
+Trip (0..*) ──< es sugerido para >── (0..*) TravelRequest
 ```
 
 **Cardinalidades:**
@@ -1115,56 +1354,72 @@ Trip (1) ──< contiene >── (0..*) Booking
 | Driver → Trip | 1:0..* | Un conductor puede publicar múltiples trayectos |
 | Trip → Booking | 1:0..* | Un trayecto puede tener múltiples reservas |
 | Passenger → Booking | 1:0..* | Un pasajero puede hacer múltiples reservas |
+| Passenger → TravelRequest | 1:0..* | Un pasajero puede hacer múltiples peticiones de viaje |
+| TravelRequest → Trip | *:0..1 | Una petición puede resultar en match con un trayecto (opcional) |
+| TravelRequest → Booking | 1:0..1 | Una petición puede resultar en una reserva (opcional) |
 | Trip → Driver | *:1 | Cada trayecto tiene un único conductor |
 | Booking → Trip | *:1 | Cada reserva pertenece a un único trayecto |
 | Booking → Passenger | *:1 | Cada reserva es de un único pasajero |
+| TravelRequest → Passenger | *:1 | Cada petición pertenece a un único pasajero |
 
 ---
 
 ### Diagrama Entidad-Relación (Textual)
 
 ```
-┌─────────────────┐
-│      USER       │
-├─────────────────┤
-│ id (PK)         │
-│ name            │
-│ email           │
-│ phone           │
-│ created_at      │
-└─────────────────┘
+┌─────────────────────┐
+│        USER         │
+├─────────────────────┤
+│ id (PK)             │
+│ name                │
+│ email               │
+│ phone               │
+│ created_at          │
+└─────────────────────┘
         │
         │ inherits/extends
         │
-        ├──────────────────────────┐
-        │                          │
-┌───────▼─────────┐      ┌────────▼────────┐
-│    DRIVER       │      │   PASSENGER     │
-├─────────────────┤      ├─────────────────┤
-│ id (PK,FK)      │      │ id (PK,FK)      │
-│ vehicle_model   │      └─────────────────┘
-│ vehicle_plate   │                │
-│ license_number  │                │
-└─────────────────┘                │
-        │ 1                        │ 1
-        │                          │
-        │ publishes                │ makes
-        │                          │
-        │ *                        │ *
-┌───────▼─────────┐      ┌────────▼────────┐
-│      TRIP       │      │    BOOKING      │
-├─────────────────┤      ├─────────────────┤
-│ id (PK)         │◄─────┤ id (PK)         │
-│ origin          │ 1  * │ trip_id (FK)    │
-│ destination     │      │ passenger_id(FK)│
-│ departure_date  │      │ booking_date    │
-│ departure_time  │      │ seats_booked    │
-│ available_seats │      │ status          │
-│ total_seats     │      └─────────────────┘
-│ driver_id (FK)  │
-│ status          │
-│ created_at      │
-└─────────────────┘
+        ├──────────────────────────────┐
+        │                              │
+┌───────▼─────────┐          ┌────────▼──────────┐
+│    DRIVER       │          │   PASSENGER       │
+├─────────────────┤          ├───────────────────┤
+│ id (PK,FK)      │          │ id (PK,FK)        │
+│ vehicle_model   │          └───────────────────┘
+│ vehicle_plate   │                    │
+│ license_number  │                    │ 1
+└─────────────────┘                    │
+        │ 1                            │ requests
+        │                              │
+        │ publishes                    │ *
+        │                    ┌─────────▼──────────────┐
+        │ *                  │   TRAVEL_REQUEST       │
+┌───────▼─────────────────┐  ├────────────────────────┤
+│         TRIP            │  │ id (PK)                │
+├─────────────────────────┤  │ passenger_id (FK)      │
+│ id (PK)                 │  │ origin_lat/lng         │
+│ origin                  │  │ destination_lat/lng    │
+│ destination             │  │ travel_date            │
+│ origin_lat/lng          │  │ time_from/to           │
+│ destination_lat/lng     │  │ status                 │
+│ departure_date          │  │ matched_trip_id (FK)   │
+│ departure_time          │  └────────────────────────┘
+│ estimated_arrival_time  │            │ *
+│ available_seats         │            │ is_evaluated_against
+│ total_seats             │            │
+│ max_detour_minutes      │◄───────────┘ 0..*
+│ current_detour_minutes  │
+│ roadmap (JSON)          │
+│ driver_id (FK)          │      ┌──────────────────┐
+│ status                  │      │    BOOKING       │
+│ created_at              │      ├──────────────────┤
+└─────────────────────────┘      │ id (PK)          │
+          │ 1                    │ trip_id (FK)     │
+          │ contains             │ passenger_id(FK) │
+          │                      │ booking_date     │
+          │ *                    │ seats_booked     │
+          └─────────────────────►│ status           │
+                                 └──────────────────┘
 ```
 
 ---
@@ -1182,6 +1437,25 @@ Trip (1) ──< contiene >── (0..*) Booking
 - Un pasajero no puede reservar dos veces el mismo trayecto
 - Un conductor no puede reservar su propio trayecto
 - departure_date debe ser fecha futura (al crear)
+
+**Del Motor de Matching (match_engine.md):**
+- **Restricción de Desvío Acumulativo:** En todo momento debe cumplirse:
+  ```
+  trip.current_detour_minutes + nuevo_desvio_adicional ≤ trip.max_detour_minutes
+  ```
+- **Restricción de Roadmap Ordenado:** El roadmap debe mantener un orden cronológico y geográfico lógico. No se permiten inserciones que alteren la secuencia.
+- **Restricción de Fecha Exacta:** Las TravelRequest solo pueden hacer match con Trips cuyo `departure_date` coincida exactamente con `travel_date`
+- **Restricción de Rango Horario:** Si TravelRequest especifica `time_from` o `time_to`, el Trip debe cumplir:
+  - Si `time_from` existe: `trip.departure_time >= travel_request.time_from`
+  - Si `time_to` existe: `trip.departure_time <= travel_request.time_to`
+- **Restricción de Disponibilidad Temporal:** No se evalúan Trips cuyo `departure_time` ya haya pasado respecto al momento actual
+- **Actualización Automática del Roadmap:** Cuando se acepta una Booking derivada de un match, el Trip debe:
+  1. Actualizar su `roadmap` para incluir los nuevos waypoints
+  2. Recalcular y actualizar `current_detour_minutes`
+  3. Decrementar `available_seats`
+- **Integridad de Coordenadas:** Los atributos `origin_lat`, `origin_lng`, `destination_lat`, `destination_lng` deben contener coordenadas geográficas válidas:
+  - Latitud: -90 ≤ lat ≤ 90
+  - Longitud: -180 ≤ lng ≤ 180
 
 ### ⚠️ Información Insuficiente en docs/
 
@@ -1554,6 +1828,12 @@ Solo si hay tiempo disponible después de completar MVP.
 - Funcionalidades core del MVP
 - Endpoints básicos de API
 - Estructura de datos básica (parcial)
+- **Motor de Matching detallado (docs/match_engine.md):**
+  - Reglas de asociación geográfica y temporal
+  - Sistema de desvío máximo acumulativo
+  - Algoritmo de inserción en roadmap
+  - Criterios de priorización y ranking
+  - Casos de uso ejemplares
 
 ### Documentación Parcial ⚠️
 - Modelo de datos (entidades identificadas pero atributos incompletos)
@@ -1576,4 +1856,18 @@ Solo si hay tiempo disponible después de completar MVP.
 
 ---
 
-**Nota Final:** Esta documentación ha sido construida a partir de la información disponible en `docs/objetivo.md` y el diagrama handwritten en `docs/5814446323997019017.jpg`. Todas las secciones marcadas con ⚠️ indican áreas donde la información en `docs/` es insuficiente o inexistente. Las secciones inferidas están claramente marcadas como tal y se basan en prácticas estándar de desarrollo de software aplicadas al contexto del proyecto.
+**Nota Final:** Esta documentación ha sido construida a partir de la información disponible en:
+- `docs/objetivo.md` - Objetivos principales del MVP y funcionalidades core
+- `docs/5814446323997019017.jpg` - Diagrama handwritten de arquitectura inicial
+- `docs/match_engine.md` - Especificación detallada del Motor de Asociación de Trayectos y Peticiones
+
+Todas las secciones marcadas con ⚠️ indican áreas donde la información en `docs/` es insuficiente o inexistente. Las secciones inferidas están claramente marcadas como tal y se basan en prácticas estándar de desarrollo de software aplicadas al contexto del proyecto.
+
+**Actualización:** El documento ha sido enriquecido con información detallada del motor de matching, incluyendo:
+- Reglas de asociación geográfica y temporal
+- Sistema de desvío máximo acumulativo
+- Gestión dinámica de roadmap
+- Criterios de priorización y ranking
+- Nueva entidad TravelRequest en el modelo de datos
+- Atributos adicionales en la entidad Trip para soportar matching avanzado
+- Reglas de integridad específicas del motor de matching
