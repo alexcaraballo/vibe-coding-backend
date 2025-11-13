@@ -1,0 +1,54 @@
+[
+  {
+    "trip_reference": {
+      "origin": "Cádiz",
+      "destination": "Sevilla",
+      "departure_date": "2025-12-15"
+    },
+    "passenger_email": "pasajero@example.com",
+    "seats_booked": 1,
+    "status": "confirmed",
+    "pickup_location": "Estación de Autobuses de Cádiz",
+    "dropoff_location": "Plaza de Armas, Sevilla",
+    "passenger_notes": "Llevo una maleta pequeña. Gracias!"
+  },
+  {
+    "trip_reference": {
+      "origin": "Málaga",
+      "destination": "Granada",
+      "departure_date": "2025-12-17"
+    },
+    "passenger_email": "pasajero@example.com",
+    "seats_booked": 1,
+    "status": "confirmed",
+    "pickup_location": "Estación María Zambrano, Málaga",
+    "dropoff_location": "Centro de Granada",
+    "passenger_notes": "Perfecto para mi viaje. Puntual por favor."
+  },
+  {
+    "trip_reference": {
+      "origin": "Granada",
+      "destination": "Almería",
+      "departure_date": "2025-12-18"
+    },
+    "passenger_email": "pasajero@example.com",
+    "seats_booked": 2,
+    "status": "pending",
+    "pickup_location": "Campus Universitario de Granada",
+    "dropoff_location": "Centro de Almería",
+    "passenger_notes": "Viajo con mi hermana, necesitamos 2 plazas. ¿Es posible?"
+  },
+  {
+    "trip_reference": {
+      "origin": "Cádiz",
+      "destination": "Jerez de la Frontera",
+      "departure_date": "2025-12-19"
+    },
+    "passenger_email": "pasajero@example.com",
+    "seats_booked": 1,
+    "status": "confirmed",
+    "pickup_location": "Puerta de Tierra, Cádiz",
+    "dropoff_location": "Centro de Jerez",
+    "passenger_notes": "Tengo reunión en Jerez a las 9:00. Muchas gracias por el viaje temprano."
+  }
+]

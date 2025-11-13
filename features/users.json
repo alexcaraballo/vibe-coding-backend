@@ -1,0 +1,32 @@
+[
+  {
+    "email": "conductor@example.com",
+    "password": "Pruebas1234",
+    "name": "María García",
+    "phone": "+34612345678",
+    "role": "driver",
+    "vehicle_model": "Toyota Prius",
+    "vehicle_plate": "1234ABC",
+    "license_number": "12345678X"
+  },
+  {
+    "email": "carlos@example.com",
+    "password": "Pruebas1234",
+    "name": "Carlos Rodríguez",
+    "phone": "+34623456789",
+    "role": "driver",
+    "vehicle_model": "Seat León",
+    "vehicle_plate": "5678DEF",
+    "license_number": "87654321Y"
+  },
+  {
+    "email": "pasajero@example.com",
+    "password": "Pruebas1234",
+    "name": "Ana López",
+    "phone": "+34634567890",
+    "role": "passenger",
+    "vehicle_model": null,
+    "vehicle_plate": null,
+    "license_number": null
+  }
+]
