@@ -1,7 +1,7 @@
 """Booking ORM models with SQLAlchemy 2.0."""
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Boolean, Integer, String, DateTime, ForeignKey, Text
+from sqlalchemy import Boolean, Integer, String, DateTime, ForeignKey, Text, Float
 from sqlalchemy.orm import Mapped, mapped_column
 
 from config.database import Base
@@ -46,6 +46,12 @@ class BookingORM(Base):
     dropoff_location: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     passenger_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # Geographic coordinates (RF-BONUS-003)
+    pickup_lat: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    pickup_lng: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    dropoff_lat: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    dropoff_lng: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
     # Metadata
     booking_date: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     cancellation_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -64,6 +70,10 @@ class BookingORM(Base):
             pickup_location=self.pickup_location,
             dropoff_location=self.dropoff_location,
             passenger_notes=self.passenger_notes,
+            pickup_lat=self.pickup_lat,
+            pickup_lng=self.pickup_lng,
+            dropoff_lat=self.dropoff_lat,
+            dropoff_lng=self.dropoff_lng,
             booking_date=self.booking_date,
             cancellation_date=self.cancellation_date,
             is_active=self.is_active,
@@ -83,6 +93,10 @@ class BookingORM(Base):
             pickup_location=booking.pickup_location,
             dropoff_location=booking.dropoff_location,
             passenger_notes=booking.passenger_notes,
+            pickup_lat=booking.pickup_lat,
+            pickup_lng=booking.pickup_lng,
+            dropoff_lat=booking.dropoff_lat,
+            dropoff_lng=booking.dropoff_lng,
             booking_date=booking.booking_date,
             cancellation_date=booking.cancellation_date,
             is_active=booking.is_active,

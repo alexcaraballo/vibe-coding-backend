@@ -23,6 +23,7 @@ from config.settings import settings
 from apps.users.infrastructure.persistence.models import UserORM  # noqa
 from apps.trips.infrastructure.persistence.models import TripORM  # noqa
 from apps.trips.infrastructure.persistence.booking_models import BookingORM  # noqa
+from apps.trips.infrastructure.persistence.chat_models import ChatMessageORM  # noqa
 from apps.matching.infrastructure.persistence.models import TravelRequestORM  # noqa
 
 target_metadata = Base.metadata

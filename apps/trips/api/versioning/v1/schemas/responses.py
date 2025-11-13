@@ -241,3 +241,209 @@ class UserCO2StatsResponse(BaseModel):
             }
         }
     )
+
+
+class PublicBookingLocationResponse(BaseModel):
+    """Schema for anonymized booking location (RF-BONUS-003)."""
+    
+    booking_id: int
+    seats_booked: int
+    pickup_location: Optional[str] = None
+    dropoff_location: Optional[str] = None
+    pickup_lat: Optional[float] = None
+    pickup_lng: Optional[float] = None
+    dropoff_lat: Optional[float] = None
+    dropoff_lng: Optional[float] = None
+    booking_date: datetime
+    
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "booking_id": 1,
+                "seats_booked": 2,
+                "pickup_location": "Estación de Cádiz",
+                "dropoff_location": "Plaza de España, Sevilla",
+                "pickup_lat": 36.5297,
+                "pickup_lng": -6.2926,
+                "dropoff_lat": 37.3772,
+                "dropoff_lng": -5.9869,
+                "booking_date": "2025-11-13T12:00:00"
+            }
+        }
+    )
+
+
+class TripWithBookingsVisualizationResponse(BaseModel):
+    """Schema for trip with public booking visualization (RF-BONUS-003)."""
+    
+    trip: TripResponse
+    total_bookings: int
+    total_seats_booked: int
+    bookings: list[PublicBookingLocationResponse]
+    
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "trip": {
+                    "id": 1,
+                    "origin": "Cádiz",
+                    "destination": "Sevilla",
+                    "departure_date": "2025-12-15",
+                    "departure_time": "09:00:00",
+                    "available_seats": 1,
+                    "total_seats": 3,
+                    "driver_id": 1,
+                    "status": "active"
+                },
+                "total_bookings": 2,
+                "total_seats_booked": 2,
+                "bookings": [
+                    {
+                        "booking_id": 1,
+                        "seats_booked": 1,
+                        "pickup_location": "Estación de Cádiz",
+                        "dropoff_location": "Centro Sevilla"
+                    }
+                ]
+            }
+        }
+    )
+
+
+class WaypointResponse(BaseModel):
+    """Schema for map waypoint."""
+    
+    type: str  # "origin", "destination", "pickup", "dropoff"
+    location: str
+    lat: float
+    lng: float
+    booking_id: Optional[int] = None
+    order: int
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "type": "pickup",
+                "location": "Estación de Jerez",
+                "lat": 36.6868,
+                "lng": -6.1362,
+                "booking_id": 1,
+                "order": 1
+            }
+        }
+    )
+
+
+class TripRouteWithStopsResponse(BaseModel):
+    """Schema for trip route with all stops for map visualization (RF-BONUS-003)."""
+    
+    trip_id: int
+    origin: str
+    destination: str
+    waypoints: list[WaypointResponse]
+    total_distance_km: Optional[float] = None
+    estimated_duration_minutes: Optional[int] = None
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "trip_id": 1,
+                "origin": "Cádiz",
+                "destination": "Sevilla",
+                "waypoints": [
+                    {
+                        "type": "origin",
+                        "location": "Cádiz",
+                        "lat": 36.5297,
+                        "lng": -6.2926,
+                        "order": 0
+                    },
+                    {
+                        "type": "pickup",
+                        "location": "Estación de Jerez",
+                        "lat": 36.6868,
+                        "lng": -6.1362,
+                        "booking_id": 1,
+                        "order": 1
+                    },
+                    {
+                        "type": "destination",
+                        "location": "Sevilla",
+                        "lat": 37.3891,
+                        "lng": -5.9845,
+                        "order": 2
+                    }
+                ],
+                "total_distance_km": 125.4,
+                "estimated_duration_minutes": 90
+            }
+        }
+    )
+
+
+class ChatMessageResponse(BaseModel):
+    """Schema de respuesta de mensaje de chat (RF-BONUS-004)."""
+
+    id: int
+    booking_id: int
+    sender_id: int
+    message: str
+    sent_at: datetime
+    is_read: bool
+    read_at: Optional[datetime] = None
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "id": 1,
+                "booking_id": 5,
+                "sender_id": 2,
+                "message": "Hola, ¿a qué hora pasas a recogerme?",
+                "sent_at": "2025-11-13T14:30:00",
+                "is_read": False,
+                "read_at": None
+            }
+        }
+    )
+
+
+class ChatConversationResponse(BaseModel):
+    """Schema de respuesta de conversación de chat (RF-BONUS-004)."""
+
+    booking_id: int
+    messages: list[ChatMessageResponse]
+    total_messages: int
+    unread_count: int
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "booking_id": 5,
+                "messages": [
+                    {
+                        "id": 1,
+                        "booking_id": 5,
+                        "sender_id": 2,
+                        "message": "Hola, ¿a qué hora pasas a recogerme?",
+                        "sent_at": "2025-11-13T14:30:00",
+                        "is_read": True,
+                        "read_at": "2025-11-13T14:35:00"
+                    },
+                    {
+                        "id": 2,
+                        "booking_id": 5,
+                        "sender_id": 1,
+                        "message": "Hola! Paso a las 10:00 AM exactamente",
+                        "sent_at": "2025-11-13T14:35:00",
+                        "is_read": False,
+                        "read_at": None
+                    }
+                ],
+                "total_messages": 2,
+                "unread_count": 1
+            }
+        }
+    )

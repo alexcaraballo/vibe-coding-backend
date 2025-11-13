@@ -197,6 +197,12 @@ class Booking:
     dropoff_location: Optional[str] = None
     passenger_notes: Optional[str] = None
 
+    # Coordenadas geográficas (RF-BONUS-003)
+    pickup_lat: Optional[float] = None
+    pickup_lng: Optional[float] = None
+    dropoff_lat: Optional[float] = None
+    dropoff_lng: Optional[float] = None
+
     # Metadatos
     booking_date: datetime = field(default_factory=datetime.utcnow)
     cancellation_date: Optional[datetime] = None
@@ -226,3 +232,34 @@ class Booking:
         self.status = BookingStatus.CANCELLED
         self.is_active = False
         self.cancellation_date = datetime.utcnow()
+
+
+@dataclass
+class ChatMessage:
+    """
+    Entidad de dominio para mensajes de chat (RF-BONUS-004).
+
+    Representa un mensaje en el chat simulado entre conductor y pasajero
+    dentro del contexto de una reserva específica.
+    """
+    booking_id: int
+    sender_id: int
+    message: str
+    id: Optional[int] = None
+    sent_at: datetime = field(default_factory=datetime.utcnow)
+    is_read: bool = False
+    read_at: Optional[datetime] = None
+    is_deleted: bool = False
+
+    def __post_init__(self):
+        """Validate business rules on entity creation."""
+        if not self.message or not self.message.strip():
+            raise ValueError("Message cannot be empty")
+        if len(self.message) > 1000:
+            raise ValueError("Message cannot exceed 1000 characters")
+
+    def mark_as_read(self) -> None:
+        """Marca el mensaje como leído."""
+        if not self.is_read:
+            self.is_read = True
+            self.read_at = datetime.utcnow()

@@ -73,12 +73,34 @@ class BookTripRequest(BaseModel):
     pickup_location: Optional[str] = Field(None, max_length=200, description="Punto de recogida específico")
     dropoff_location: Optional[str] = Field(None, max_length=200, description="Punto de bajada específico")
 
+    # Geographic coordinates (RF-BONUS-003)
+    pickup_lat: Optional[float] = Field(None, ge=-90, le=90, description="Latitud del punto de recogida")
+    pickup_lng: Optional[float] = Field(None, ge=-180, le=180, description="Longitud del punto de recogida")
+    dropoff_lat: Optional[float] = Field(None, ge=-90, le=90, description="Latitud del punto de bajada")
+    dropoff_lng: Optional[float] = Field(None, ge=-180, le=180, description="Longitud del punto de bajada")
+
     model_config = {
         "json_schema_extra": {
             "example": {
                 "seats_requested": 1,
                 "passenger_notes": "Llegaré 5 minutos antes",
-                "pickup_location": "Estación de tren de Cádiz"
+                "pickup_location": "Estación de tren de Cádiz",
+                "pickup_lat": 36.5297,
+                "pickup_lng": -6.2926
+            }
+        }
+    }
+
+
+class SendChatMessageRequest(BaseModel):
+    """Schema para enviar mensaje de chat (RF-BONUS-004)."""
+
+    message: str = Field(..., min_length=1, max_length=1000, description="Contenido del mensaje")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "message": "Hola, ¿a qué hora pasas a recogerme?"
             }
         }
     }

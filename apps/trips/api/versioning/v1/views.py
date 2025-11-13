@@ -17,7 +17,11 @@ from apps.trips.api.versioning.v1.schemas.responses import (
     BookingWithTripResponse,
     BookingListResponse,
     CO2ImpactResponse,
-    UserCO2StatsResponse
+    UserCO2StatsResponse,
+    TripWithBookingsVisualizationResponse,
+    PublicBookingLocationResponse,
+    TripRouteWithStopsResponse,
+    WaypointResponse
 )
 
 # Import authentication from users
@@ -406,7 +410,11 @@ async def book_trip(
         seats_requested=payload.seats_requested,
         passenger_notes=payload.passenger_notes,
         pickup_location=payload.pickup_location,
-        dropoff_location=payload.dropoff_location
+        dropoff_location=payload.dropoff_location,
+        pickup_lat=payload.pickup_lat,
+        pickup_lng=payload.pickup_lng,
+        dropoff_lat=payload.dropoff_lat,
+        dropoff_lng=payload.dropoff_lng
     )
 
     return BookingResponse.model_validate(created_booking)
@@ -497,4 +505,301 @@ async def list_trip_bookings(
         total=len(bookings),
         skip=skip,
         limit=limit
+    )
+
+
+@router.get("/{trip_id}/co2-impact", response_model=CO2ImpactResponse)
+async def get_trip_co2_impact(
+    trip_id: int,
+    trip_repo: Annotated[ITripRepository, Depends(get_trip_repository)],
+    co2_service: Annotated[ICO2Service, Depends(get_co2_service)]
+):
+    """
+    Obtener impacto de CO₂ de un trayecto específico (RF-BONUS-002).
+
+    **Endpoint:** `GET /trips/{trip_id}/co2-impact`
+
+    **Características:**
+    - Muestra el CO₂ evitado por el trayecto
+    - Calcula el CO₂ si no está calculado aún
+    - Muestra equivalencias (árboles plantados, km no conducidos)
+    - No requiere autenticación (información pública)
+
+    **Ejemplo de uso:**
+    ```
+    GET /api/v1/trips/123/co2-impact
+    ```
+
+    **Respuesta:**
+    - vehicle_type: Tipo de vehículo
+    - distance_km: Distancia del trayecto
+    - co2_saved_per_passenger_kg: CO₂ evitado por pasajero
+    - total_co2_saved_kg: CO₂ total evitado
+    - passengers_count: Número de pasajeros que han reservado
+    - equivalences: Equivalencias para entender el impacto
+    """
+    # Get trip
+    trip = await trip_repo.get_by_id(trip_id)
+    if not trip:
+        raise EntityNotFound("Trip", trip_id)
+
+    # Calculate CO₂ if not calculated yet
+    if not trip.co2_saved_per_passenger_kg:
+        trip = await co2_service.calculate_and_update_co2(trip)
+        await trip_repo.update(trip_id, trip)
+
+    # Calculate passengers count
+    passengers_count = trip.total_seats - trip.available_seats
+
+    # Calculate equivalences
+    total_co2 = trip.total_co2_saved_kg or 0.0
+    equivalence_trees = round(total_co2 * 0.4, 1)
+    equivalence_km = round(total_co2 * 5.0, 1)
+
+    return CO2ImpactResponse(
+        trip_id=trip.id,
+        vehicle_type=trip.vehicle_type.value,
+        distance_km=trip.distance_km,
+        co2_saved_per_passenger_kg=trip.co2_saved_per_passenger_kg,
+        total_co2_saved_kg=trip.total_co2_saved_kg,
+        passengers_count=passengers_count,
+        equivalences={
+            "trees": f"Equivalente a plantar {equivalence_trees} árboles por un año",
+            "km": f"Equivalente a no conducir {equivalence_km} km en coche convencional"
+        }
+    )
+
+
+@router.get("/users/me/co2-stats", response_model=UserCO2StatsResponse)
+async def get_my_co2_stats(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    co2_service: Annotated[ICO2Service, Depends(get_co2_service)]
+):
+    """
+    Obtener estadísticas de CO₂ del usuario autenticado (RF-BONUS-002).
+
+    **Endpoint:** `GET /trips/users/me/co2-stats`
+
+    **Características:**
+    - Muestra el CO₂ total evitado por el usuario
+    - Incluye viajes como conductor y como pasajero
+    - Calcula equivalencias motivacionales
+    - Requiere autenticación
+
+    **Estadísticas incluidas:**
+    - total_co2_saved_kg: Total de CO₂ evitado
+    - trips_as_driver: Número de viajes como conductor
+    - trips_as_passenger: Número de viajes como pasajero
+    - total_trips: Total de viajes
+    - average_co2_per_trip_kg: Promedio de CO₂ por viaje
+    - equivalence_trees: Árboles plantados equivalente
+    - equivalence_km_not_driven: Kilómetros no conducidos equivalente
+
+    **Ejemplo de uso:**
+    ```
+    GET /api/v1/trips/users/me/co2-stats
+    Authorization: Bearer <token>
+    ```
+    """
+    stats = await co2_service.get_user_co2_stats(current_user.id)
+    return UserCO2StatsResponse(**stats)
+
+
+@router.get("/{trip_id}/bookings/public", response_model=TripWithBookingsVisualizationResponse)
+async def get_trip_bookings_public(
+    trip_id: int,
+    trip_repo: Annotated[ITripRepository, Depends(get_trip_repository)],
+    booking_repo: Annotated[IBookingRepository, Depends(get_booking_repository)]
+):
+    """
+    Obtener visualización pública de reservas de un trayecto (RF-BONUS-003).
+
+    **Endpoint:** `GET /trips/{trip_id}/bookings/public`
+
+    **Características:**
+    - Muestra información pública de las reservas (sin datos personales)
+    - Incluye puntos de recogida y bajada con coordenadas
+    - Útil para visualizar en mapa las paradas del trayecto
+    - No requiere autenticación (información pública)
+    - Protege privacidad: no expone nombres ni IDs de pasajeros
+
+    **Información expuesta:**
+    - Número de plazas reservadas por cada reserva
+    - Ubicaciones de recogida y bajada (si están definidas)
+    - Coordenadas geográficas de las ubicaciones
+    - Fecha de reserva
+    - Total de reservas y plazas reservadas
+
+    **Información NO expuesta (privada):**
+    - Nombres de pasajeros
+    - IDs de pasajeros
+    - Notas de pasajeros
+    - Información de contacto
+
+    **Ejemplo de uso:**
+    ```
+    GET /api/v1/trips/123/bookings/public
+    ```
+
+    **Caso de uso:**
+    Permite a cualquier usuario (incluyendo no autenticados) ver las paradas
+    intermedias de un trayecto en un mapa, ayudando a decidir si el trayecto
+    les conviene según las ubicaciones de recogida/bajada.
+    """
+    # Get trip
+    trip = await trip_repo.get_by_id(trip_id)
+    if not trip:
+        raise EntityNotFound("Trip", trip_id)
+
+    # Get all active bookings for this trip
+    bookings = await booking_repo.get_by_trip(trip_id, skip=0, limit=1000)
+
+    # Filter only confirmed bookings
+    active_bookings = [b for b in bookings if b.status == "confirmed" and b.is_active]
+
+    # Create public booking responses (anonymized)
+    public_bookings = []
+    total_seats_booked = 0
+
+    for booking in active_bookings:
+        total_seats_booked += booking.seats_booked
+
+        # Only include bookings with location information
+        if booking.pickup_location or booking.dropoff_location:
+            public_bookings.append(
+                PublicBookingLocationResponse(
+                    booking_id=booking.id,
+                    seats_booked=booking.seats_booked,
+                    pickup_location=booking.pickup_location,
+                    dropoff_location=booking.dropoff_location,
+                    pickup_lat=booking.pickup_lat if hasattr(booking, 'pickup_lat') else None,
+                    pickup_lng=booking.pickup_lng if hasattr(booking, 'pickup_lng') else None,
+                    dropoff_lat=booking.dropoff_lat if hasattr(booking, 'dropoff_lat') else None,
+                    dropoff_lng=booking.dropoff_lng if hasattr(booking, 'dropoff_lng') else None,
+                    booking_date=booking.booking_date
+                )
+            )
+
+    return TripWithBookingsVisualizationResponse(
+        trip=TripResponse.model_validate(trip),
+        total_bookings=len(active_bookings),
+        total_seats_booked=total_seats_booked,
+        bookings=public_bookings
+    )
+
+
+@router.get("/{trip_id}/route-with-stops", response_model=TripRouteWithStopsResponse)
+async def get_trip_route_with_stops(
+    trip_id: int,
+    trip_repo: Annotated[ITripRepository, Depends(get_trip_repository)],
+    booking_repo: Annotated[IBookingRepository, Depends(get_booking_repository)]
+):
+    """
+    Obtener ruta completa del trayecto con todas las paradas para visualización en mapa (RF-BONUS-003).
+
+    **Endpoint:** `GET /trips/{trip_id}/route-with-stops`
+
+    **Características:**
+    - Devuelve origen, destino y todos los puntos intermedios (recogidas/bajadas)
+    - Waypoints ordenados para visualización en mapa
+    - Incluye coordenadas geográficas para cada punto
+    - No requiere autenticación (información pública)
+    - Útil para dibujar ruta completa en mapa interactivo
+
+    **Tipos de waypoints:**
+    - `origin`: Punto de origen del trayecto
+    - `destination`: Punto de destino del trayecto
+    - `pickup`: Punto de recogida de pasajero
+    - `dropoff`: Punto de bajada de pasajero
+
+    **Ejemplo de uso:**
+    ```
+    GET /api/v1/trips/123/route-with-stops
+    ```
+
+    **Respuesta:**
+    Lista ordenada de waypoints desde el origen hasta el destino,
+    incluyendo todas las paradas intermedias de recogida y bajada.
+
+    **Caso de uso:**
+    Permite visualizar en un mapa la ruta completa con todas las paradas,
+    mostrando a potenciales pasajeros el recorrido exacto que hará el conductor.
+    """
+    # Get trip
+    trip = await trip_repo.get_by_id(trip_id)
+    if not trip:
+        raise EntityNotFound("Trip", trip_id)
+
+    # Get all active bookings with confirmed status
+    bookings = await booking_repo.get_by_trip(trip_id, skip=0, limit=1000)
+    active_bookings = [b for b in bookings if b.status == "confirmed" and b.is_active]
+
+    # Build waypoints list
+    waypoints = []
+    order = 0
+
+    # 1. Add origin
+    if trip.origin_lat and trip.origin_lng:
+        waypoints.append(
+            WaypointResponse(
+                type="origin",
+                location=trip.origin,
+                lat=trip.origin_lat,
+                lng=trip.origin_lng,
+                booking_id=None,
+                order=order
+            )
+        )
+        order += 1
+
+    # 2. Add pickup points from bookings
+    for booking in active_bookings:
+        if booking.pickup_location and hasattr(booking, 'pickup_lat') and booking.pickup_lat:
+            waypoints.append(
+                WaypointResponse(
+                    type="pickup",
+                    location=booking.pickup_location,
+                    lat=booking.pickup_lat,
+                    lng=booking.pickup_lng,
+                    booking_id=booking.id,
+                    order=order
+                )
+            )
+            order += 1
+
+    # 3. Add dropoff points from bookings
+    for booking in active_bookings:
+        if booking.dropoff_location and hasattr(booking, 'dropoff_lat') and booking.dropoff_lat:
+            waypoints.append(
+                WaypointResponse(
+                    type="dropoff",
+                    location=booking.dropoff_location,
+                    lat=booking.dropoff_lat,
+                    lng=booking.dropoff_lng,
+                    booking_id=booking.id,
+                    order=order
+                )
+            )
+            order += 1
+
+    # 4. Add destination
+    if trip.destination_lat and trip.destination_lng:
+        waypoints.append(
+            WaypointResponse(
+                type="destination",
+                location=trip.destination,
+                lat=trip.destination_lat,
+                lng=trip.destination_lng,
+                booking_id=None,
+                order=order
+            )
+        )
+
+    return TripRouteWithStopsResponse(
+        trip_id=trip.id,
+        origin=trip.origin,
+        destination=trip.destination,
+        waypoints=waypoints,
+        total_distance_km=trip.distance_km,
+        estimated_duration_minutes=None  # TODO: Calculate based on distance and speed
     )

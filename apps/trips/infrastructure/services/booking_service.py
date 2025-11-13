@@ -37,7 +37,11 @@ class BookingService:
         seats_requested: int = 1,
         passenger_notes: Optional[str] = None,
         pickup_location: Optional[str] = None,
-        dropoff_location: Optional[str] = None
+        dropoff_location: Optional[str] = None,
+        pickup_lat: Optional[float] = None,
+        pickup_lng: Optional[float] = None,
+        dropoff_lat: Optional[float] = None,
+        dropoff_lng: Optional[float] = None
     ) -> Booking:
         """
         Crea una reserva con validaciones completas.
@@ -86,7 +90,11 @@ class BookingService:
             seats_booked=seats_requested,
             passenger_notes=passenger_notes,
             pickup_location=pickup_location,
-            dropoff_location=dropoff_location
+            dropoff_location=dropoff_location,
+            pickup_lat=pickup_lat,
+            pickup_lng=pickup_lng,
+            dropoff_lat=dropoff_lat,
+            dropoff_lng=dropoff_lng
         )
 
         created_booking = await self.booking_repo.create(booking)

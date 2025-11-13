@@ -6,9 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config.database import get_async_session
 from apps.trips.domain.repositories.trip_repository import ITripRepository
 from apps.trips.domain.repositories.booking_repository import IBookingRepository
+from apps.trips.domain.repositories.chat_repository import IChatRepository
 from apps.trips.domain.services.co2_service import ICO2Service
 from apps.trips.infrastructure.repositories.trip_repository import TripRepository
 from apps.trips.infrastructure.repositories.booking_repository import BookingRepository
+from apps.trips.infrastructure.repositories.chat_repository import ChatRepository
 from apps.trips.infrastructure.services.booking_service import BookingService
 from apps.trips.infrastructure.services.co2_calculator import CO2Calculator
 from apps.maps.domain.services.map_service import IMapService
@@ -79,3 +81,18 @@ async def get_co2_service(
         ICO2Service instance
     """
     return CO2Calculator(trip_repo, booking_repo, map_service)
+
+
+async def get_chat_repository(
+    session: Annotated[AsyncSession, Depends(get_async_session)]
+) -> IChatRepository:
+    """
+    Inyecta repositorio de mensajes de chat.
+
+    Args:
+        session: SQLAlchemy async session
+
+    Returns:
+        IChatRepository implementation
+    """
+    return ChatRepository(session)
